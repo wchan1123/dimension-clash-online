@@ -11,7 +11,7 @@ function request(s,event,data={}){return new Promise((resolve,reject)=>s.timeout
 const timeout=(ms=8000)=>new Promise((_,reject)=>setTimeout(()=>reject(Error('state timeout')),ms));
 test('3 real Socket.IO clients: private hands, sequential reactions, round count, reconnect', {timeout:30000}, async(t)=>{
  const port=37000+(process.pid%20000),url='http://127.0.0.1:'+port;
- const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),NODE_ENV:'test'},stdio:['ignore','pipe','pipe']});
  let stderr='';child.stderr.on('data',d=>stderr+=d.toString());
  t.after(()=>child.kill('SIGTERM'));
  let live=false;
@@ -33,8 +33,8 @@ test('3 real Socket.IO clients: private hands, sequential reactions, round count
  assert.deepEqual([as.hand.length,bs.hand.length,cs.hand.length],[3,3,3]);
  assert.equal(new Set([...as.hand,...bs.hand,...cs.hand].map(x=>x.id)).size,9);
  assert.ok(as.players.every(p=>!('hand' in p)),'other hands must remain private');
- const original=as.hand.find(x=>!['007','070','118','119'].includes(x.id))||as.hand[0];
- assert.equal((await request(a,'announce',{cardId:original.id})).ok,true);
+ assert.equal((await request(a,'testGrant',{cards:['006']})).ok,true);
+ assert.equal((await request(a,'announce',{cardId:'006'})).ok,true);
  assert.equal((await request(c,'react',{choice:'pass'})).ok,false,'C cannot respond before B');
  assert.equal((await request(b,'react',{choice:'pass'})).ok,true);
  assert.equal((await request(b,'react',{choice:'pass'})).ok,false,'B cannot respond twice');
