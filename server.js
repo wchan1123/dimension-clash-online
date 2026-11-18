@@ -111,7 +111,7 @@ action(s,'triggerTrap',(r,p,{cardId}={})=>{
  if(r.trapReveal)return '먼저 발동한 함정의 효과를 해결해 주세요';
  const idx=p.traps.indexOf(cardId);if(idx<0)return '내가 설치한 함정이 아닙니다';
  const c=card(r,cardId);if(c?.type!=='trap')return '함정 카드가 아닙니다';
- r.trapReveal={cardId,cardName:c.name,ownerId:p.id,ownerName:p.name,at:Date.now()};
+ r.trapReveal={cardId,cardName:c.name,ownerId:p.id,ownerName:p.name,index:idx,at:Date.now()};
  r.showcase={cardId,cardName:c.name,actorName:p.name,actorId:p.id,at:Date.now(),kind:'trap'};
  log(r,p.name+'님의 함정이 공개되었습니다: '+c.name);
 });
