@@ -83,12 +83,23 @@ input:focus,select:focus{outline:2px solid #80fbc8}
 #cardInspection #inspectionName{font-size:19px;color:#fff3d6}
 #settings{justify-content:center}
 @media(max-width:800px){#topbar h1{font-size:14px}#topbar{padding:7px}#actions{padding:7px 5px}#actions button{font-size:11px;padding:6px 7px!important;min-height:36px!important}#trapInfo{max-width:150px;min-width:125px}#notice{font-size:11px;top:70px}}
+</style><style id="target-style">
+#targetPicker{position:absolute;right:24px;top:34%;z-index:200;width:min(310px,85vw);pointer-events:auto;border:2px solid #7cf6c6}
+#targetPicker.hidden,#actionCaption.hidden{display:none}
+#targetPicker strong{font-size:17px;color:#fff3d1}
+#targetHint{line-height:1.55;color:#e5cfea;font-size:12px}
+#targetPlayers{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+#hud .target-option{font-size:12px;padding:8px;min-height:48px;background:linear-gradient(145deg,#4d2a68,#2b1740);color:#f7e9fd;border:2px solid #8469a5}
+#hud .target-option.picked{background:linear-gradient(145deg,#6becbc,#31adab);color:#160c25;border-color:#fff6c9}
+.target-actions{display:grid;gap:7px}
+#actionCaption{position:absolute;top:15%;left:50%;transform:translateX(-50%);z-index:170;border:2px solid #7ff5c5;padding:12px 24px;background:#29163de8;color:#fff4d2;box-shadow:0 0 25px #6ef5b13b;border-radius:15px;font-size:16px;font-weight:900;max-width:min(630px,90vw);text-align:center}
+@media(max-width:700px){#targetPicker{right:7px;top:24%;width:215px;padding:10px}#actionCaption{top:21%;font-size:12px;padding:8px}#targetPlayers{grid-template-columns:1fr}}
 </style></head><body><canvas id="view"></canvas><div id="hud">
 <div id="topbar" class="panel"><div class="row"><h1>✦ 차원대충돌! 3D</h1><span id="roundInfo">게임 대기 중</span></div><div class="row"><button class="secondary" id="copy">초대 링크</button><button class="secondary" id="flat">2D로 돌아가기</button></div></div>
 <div id="status" class="panel">플레이어 대기 중</div><button id="modeButton" class="secondary">E · 자리 앉기</button>
 <div id="notice">WASD 이동 · 마우스로 시점 · E 앉기 / 일어나기</div>
 <div id="dropzones"><div class="zone" id="playZone" data-zone="play">✦ 카드 사용</div><div class="zone" id="trapZone" data-zone="trap">◇ 함정 뒤집어 설치</div></div>
-<div id="cursors"></div><div id="trapInfo" class="panel"></div>
+<div id="cursors"></div><div id="targetPicker" class="panel hidden"><strong>✦ 카드 대상 지정</strong><p id="targetHint">상대 캐릭터를 클릭해서 가리켜 주세요.</p><div id="targetPlayers"></div><div class="target-actions"><button id="targetConfirm">선택한 상대에게 사용</button><button class="secondary" id="targetCancel">취소</button></div></div><div id="actionCaption" class="hidden"></div><div id="trapInfo" class="panel"></div>
 <div id="bigCard"><span id="bigLabel"></span><div id="bigArt"></div></div><div id="cardInspection"><div class="dialog"><strong id="inspectionName"></strong><div class="art" id="inspectionArt"></div><button id="inspectionUse">선택한 카드 사용</button><button class="secondary" id="inspectionClose">닫기</button></div></div>
 <div id="response" class="panel"></div>
 <div id="bottom"><div id="hand"></div><div id="actions"><button id="draw" class="primary">✦ 덱 · 1장 뽑기</button><button id="next">턴 종료 ❯</button><button id="viewCard">카드 자세히</button><button id="field">◈ 필드 교체</button><button id="grave">묘지로 보내기</button><button id="win">✦ 아마겟돈!</button></div></div>
@@ -114,7 +125,7 @@ const marker=mesh(new THREE.CylinderGeometry(.32,.32,.04,32),0xffd18c);marker.po
 table.visible=false;edge.visible=false;center.visible=false;pole.visible=false;deckMesh.visible=false;graveMesh.visible=false;marker.visible=false;
 const board3d=buildBoard(scene),originalBack=loadBack();let lastBackTexture=null;
 const me={x:0,z:7.2,angle:0,seat:false,ready:false};let state=null,selected=null,currentCode=null,players={},lastAvatar=0,lastCursor=0,latestShow=null;
-const avatars=new Map(),key=new Set();let draggingId=null;
+const avatars=new Map(),key=new Set();let draggingId=null,pointing=null,pickedTarget=null,lastActionId=null,spotlightUntil=0,spotlightActorId=null;const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const saved=()=>{try{return JSON.parse(localStorage.getItem('clash-session')||'null')}catch{return null}};
 const persist=(r,name)=>{localStorage.setItem('clash-session',JSON.stringify({code:r.code,token:r.token,name}));currentCode=r.code;history.replaceState(null,'','?room='+r.code)};
 function send(event,data={}){socket.emit(event,data,r=>{if(!r?.ok){$('notice').textContent='⚠ '+r?.error;return}if((event==='create'||event==='join')&&r?.code){persist(r,$('name').value);$('notice').textContent='입장 완료 · 테이블로 이동할 수 있어요'}else if(event!=='avatar')$('notice').textContent='✓ '+event+' 처리 완료'})}
@@ -132,19 +143,72 @@ function render(){if(!state)return;
  $('saveRounds').disabled=state.owner!==state.me;
  const old=selected;$('hand').replaceChildren();
  for(const c of state.hand){const div=document.createElement('button');div.className='card';div.title=c.name;div.draggable=true;div.dataset.id=c.id;div.style.cssText=cardStyle(c.id);if(c.id===old)div.classList.add('selected');div.onclick=()=>{selected=c.id;render();};div.ondblclick=()=>inspect(c);div.ondragstart=e=>{draggingId=c.id;e.dataTransfer.setData('text/plain',c.id);};$('hand').appendChild(div)}
- $('draw').disabled=state.status!=='playing'||state.players[state.turn]?.id!==state.me;$('next').disabled=state.status!=='playing'||state.players[state.turn]?.id!==state.me;$('win').disabled=state.hand.length<10;
+ $('draw').disabled=state.status!=='playing'||state.players[state.turn]?.id!==state.me||!!state.turnAction||!!state.pending;$('next').disabled=state.status!=='playing'||state.players[state.turn]?.id!==state.me;$('win').disabled=state.hand.length<10;
  const trap=state.myTraps||[];
  for(const p of state.players){avatar(p);if(p.id===state.me){me.seat=p.seated;if(!me.ready){me.x=p.x;me.z=p.z;me.ready=true}}}
+ if(state.actionEvent&&state.actionEvent.id!==lastActionId){lastActionId=state.actionEvent.id;showAction(state.actionEvent)}
  if(state.showcase && state.showcase.at!==latestShow){latestShow=state.showcase.at;const c=state.catalog.find(x=>x.id===state.showcase.cardId);large(c,state.showcase.actorName+(state.showcase.kind==='trap'?' 함정 발동':' 카드 사용'));}
  refreshBoard(board3d,state,originalBack);
  renderTrapControls();
  drawReactions();
 }
 function renderTrapControls(){const box=$('trapInfo');box.replaceChildren();if(!state)return;const title=document.createElement('strong');title.textContent='✦ 내 설치 함정 · '+state.myTraps.length+'장';box.appendChild(title);for(const c of state.myTraps){const b=document.createElement('button');b.className='trap-chip';b.title=c.name+' · 조건이 맞으면 발동';b.textContent='▣ '+c.name+' · 발동';b.onclick=()=>{if(confirm(c.name+'의 원본 발동 조건이 실제로 충족됐나요?'))send('triggerTrap',{cardId:c.id})};box.appendChild(b)}if(state.trapReveal?.ownerId===state.me){const b=document.createElement('button');b.className='trap-complete';b.textContent='✓ 함정 처리 완료 → 묘지';b.onclick=()=>send('finishTrap');box.appendChild(b)}}
+
+function showAction(action){
+ const box=$('actionCaption');box.textContent='✦ '+action.label;box.classList.remove('hidden');
+ spotlightActorId=action.actorId;spotlightUntil=performance.now()+3200;
+ const actor=avatars.get(action.actorId),target=avatars.get(action.targetId);
+ if(actor){actor.pointUntil=Date.now()+2250;actor.targetPos=target?target.g.position.clone():new THREE.Vector3(0,1,0);}
+ clearTimeout(showAction.timeout);showAction.timeout=setTimeout(()=>box.classList.add('hidden'),3300);
+}
+function beginPoint(cardId,kind='action'){
+ if(!state)return;
+ const c=state.hand.find(x=>x.id===cardId);
+ if(!c||!['action','counter'].includes(c.type)){ $('notice').textContent='대상 지정은 행동·카운터카드에서만 가능합니다';return }
+ pointing={cardId,kind};pickedTarget=null;
+ $('targetPicker').classList.remove('hidden');
+ $('targetHint').textContent='카드를 든 상태입니다. 상대 캐릭터를 마우스로 클릭하거나 아래에서 선택하세요.';
+ renderTargets();
+}
+function renderTargets(){
+ const list=$('targetPlayers');list.replaceChildren();
+ for(const p of state.players.filter(p=>p.id!==state.me)){
+  const btn=document.createElement('button');btn.textContent='☞ '+p.name;
+  btn.className='target-option'+(pickedTarget===p.id?' picked':'');
+  btn.onclick=()=>{pickedTarget=p.id;renderTargets();highlightTarget(p.id)};
+  list.appendChild(btn);
+ }
+ $('targetConfirm').disabled=!pickedTarget;
+}
+function highlightTarget(id){
+ for(const [pid,a] of avatars){a.g.traverse(o=>{if(o.isMesh&&o.material?.emissive)o.material.emissive.setHex(pid===id?0x173e30:0x000000)})}
+}
+function clearPoint(){pointing=null;pickedTarget=null;$('targetPicker').classList.add('hidden');highlightTarget(null)}
+$('targetCancel').onclick=clearPoint;
+$('targetConfirm').onclick=()=>{
+ if(!pointing||!pickedTarget)return;
+ const {cardId,kind}=pointing;
+ const targetId=pickedTarget;
+ if(kind==='counter'){send('react',{choice:'counter',cardId,targetId});}
+ else send('announce',{cardId,targetId});
+ clearPoint();
+};
+$('view').addEventListener('pointerdown',e=>{
+ if(!pointing||!state)return;
+ const rect=$('view').getBoundingClientRect();
+ pointer.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
+ ray.setFromCamera(pointer,camera);
+ const candidates=[...avatars.values()].filter(a=>a.id!==state.me);
+ for(const entry of ray.intersectObjects(candidates.map(a=>a.g),true)){
+   let obj=entry.object;while(obj.parent&&!candidates.some(a=>a.g===obj))obj=obj.parent;
+   const target=candidates.find(a=>a.g===obj);
+   if(target){pickedTarget=target.id;renderTargets();highlightTarget(target.id);$('notice').textContent=target.p.name+'님을 가리키고 있습니다';break}
+ }
+});
 function esc(s){return String(s).replace(/[&<>"]/g,t=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[t]))}
 function drawReactions(){const w=state?.pending,r=$('response');r.classList.toggle('show',!!w);if(!w)return;r.replaceChildren();const title=document.createElement('b');title.textContent='⚡ '+w.stack?.at(-1)?.cardName+' 대응';r.appendChild(title);const p=document.createElement('p');p.className='muted';const priority=w.stage==='responding'?w.order[w.cursor]:null;p.textContent=w.stage==='ready'?'카드 효과 처리 대기':state.players.find(x=>x.id===priority)?.name+'님의 대응 순서';r.appendChild(p);
 function button(label,cb){const b=document.createElement('button');b.textContent=label;b.onclick=cb;r.appendChild(b)}
-if(w.stage==='responding'&&priority===state.me){button('반응 없음 · 패스',()=>send('react',{choice:'pass'}));if(state.hand.length||state.myTraps.length){const select=document.createElement('select');select.id='counterChoice';for(const c of [...state.hand,...state.myTraps]){const o=document.createElement('option');o.value=c.id;o.textContent=c.name;select.appendChild(o)}r.appendChild(select);button('대응 카드 선언',()=>send('react',{choice:'counter',cardId:select.value}))}}
+if(w.stage==='responding'&&priority===state.me){button('반응 없음 · 패스',()=>send('react',{choice:'pass'}));if(state.hand.some(c=>c.type==='counter')){const select=document.createElement('select');select.id='counterChoice';for(const c of state.hand.filter(c=>c.type==='counter')){const o=document.createElement('option');o.value=c.id;o.textContent=c.name;select.appendChild(o)}r.appendChild(select);button('☞ 상대를 가리켜 카운터 사용',()=>beginPoint(select.value,'counter'))}}
 if(w.stage==='ready'&&w.stack.at(-1)?.actorId===state.me)button('효과 확인 후 해결',()=>send('resolve'));
 }
 socket.on('connect',()=>{const session=saved();if(session){$('name').value=session.name;socket.emit('join',session,res=>{if(res?.ok)persist(res,session.name);else $('notice').textContent='기존 방 재접속 실패 · 새 방을 만들거나 입장하세요'})}});
@@ -159,7 +223,7 @@ $('draw').onclick=()=>send('draw',{count:1});$('next').onclick=()=>send('next');
 $('viewCard').onclick=()=>inspect(state?.hand.find(x=>x.id===selected));
 $('field').onclick=()=>moveSelected('field');$('grave').onclick=()=>moveSelected('discard');
 function moveSelected(destination){if(!selected)return $('notice').textContent='손패를 먼저 선택하세요';const c=state.hand.find(x=>x.id===selected);if(destination==='field'&&c.type!=='field')return $('notice').textContent='필드에는 필드카드만 둘 수 있습니다';if(destination==='trap'&&c.type!=='trap')return $('notice').textContent='함정 구역에는 함정카드만 둘 수 있습니다';send('move',{cardId:selected,destination});selected=null}
-function playSelected(id){const c=state?.hand.find(x=>x.id===id);if(!c)return;selected=id;if(c.type==='field')return moveSelected('field');if(c.type==='trap')return moveSelected('trap');send('announce',{cardId:id});}
+function playSelected(id){const c=state?.hand.find(x=>x.id===id);if(!c)return;selected=id;if(c.type==='field')return moveSelected('field');if(c.type==='trap')return moveSelected('trap');if(c.type==='action')return beginPoint(id,'action');if(c.type==='counter')return beginPoint(id,'counter');$('notice').textContent='이 카드 종류는 직접 사용할 수 없습니다';}
 for(const z of document.querySelectorAll('.zone')){z.ondragover=e=>{e.preventDefault();z.classList.add('over')};z.ondragleave=()=>z.classList.remove('over');z.ondrop=e=>{e.preventDefault();z.classList.remove('over');const id=e.dataTransfer.getData('text/plain')||draggingId;selected=id;if(z.dataset.zone==='trap')moveSelected('trap');else playSelected(id)};z.onclick=()=>{if(z.dataset.zone==='trap')moveSelected('trap');else if(selected)playSelected(selected)}}
 function toggleSeat(){if(!state)return;const pos=seatPosition();if(me.seat){send('sit',{sit:false});me.seat=false;me.x=pos.x*1.5;me.z=pos.z*1.5;return}if(Math.hypot(me.x-pos.x,me.z-pos.z)>3.4){$('notice').textContent='내 자리 쪽으로 WASD 이동한 후 E를 누르세요';return}send('sit',{sit:true});me.seat=true;me.x=pos.x;me.z=pos.z}
 $('modeButton').onclick=toggleSeat;
@@ -170,8 +234,11 @@ $('view').oncontextmenu=e=>e.preventDefault();
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
 function animate(){requestAnimationFrame(animate);const dt=Math.min(.05,clock.getDelta());if(!me.seat&&state){const vx=Number(key.has('d'))-Number(key.has('a')),vz=Number(key.has('s'))-Number(key.has('w'));if(vx||vz){const len=Math.hypot(vx,vz),dx=(Math.cos(yaw)*vx-Math.sin(yaw)*vz)/len*dt*3.8,dz=(Math.sin(yaw)*vx+Math.cos(yaw)*vz)/len*dt*3.8;const nx=Math.max(-11,Math.min(11,me.x+dx)),nz=Math.max(-11,Math.min(11,me.z+dz));if(Math.hypot(nx,nz)>3.35){me.x=nx;me.z=nz}if(performance.now()-lastAvatar>90){lastAvatar=performance.now();socket.emit('avatar',{x:me.x,z:me.z,angle:yaw})}}}
  const target=new THREE.Vector3(0,1.2,0);
- if(me.seat){const pos=seatPosition();const origin=new THREE.Vector3(pos.x*1.12,2.45,pos.z*1.12);camera.position.lerp(origin,.10);camera.lookAt(target);}else{const pos=new THREE.Vector3(me.x,2.2,me.z);camera.position.lerp(pos,.12);camera.lookAt(me.x+Math.sin(yaw)*4,1.75,me.z-Math.cos(yaw)*4);}
- if(state){for(const a of avatars.values()){const distance=a.previous?Math.hypot(a.g.position.x-a.previous.x,a.g.position.z-a.previous.z):0;animateHuman(a,clock.elapsedTime,distance>.01,a.p.seated);a.previous={x:a.g.position.x,z:a.g.position.z};}const p=avatars.get(state.me);if(p){p.g.position.set(me.x,0,me.z);p.g.visible=!me.seat}if(originalBack.texture!==lastBackTexture){lastBackTexture=originalBack.texture;refreshBoard(board3d,state,originalBack)}}
+ if(me.seat){const focus=state?.players.find(x=>x.id===(spotlightUntil>performance.now()?spotlightActorId:state?.players[state?.turn]?.id));
+  if(state?.status==='playing'&&focus){const fx=focus.x||0,fz=focus.z||0,dir=new THREE.Vector3(fx,0,fz).normalize();if(dir.lengthSq()<.01)dir.set(0,0,1);const origin=new THREE.Vector3(fx+dir.x*2.25,2.65,fz+dir.z*2.25);camera.position.lerp(origin,.065);camera.lookAt(new THREE.Vector3(fx,1.35,fz));}
+  else{const pos=seatPosition();const origin=new THREE.Vector3(pos.x*1.12,2.45,pos.z*1.12);camera.position.lerp(origin,.10);camera.lookAt(target);}}
+ else{const pos=new THREE.Vector3(me.x,2.2,me.z);camera.position.lerp(pos,.12);camera.lookAt(me.x+Math.sin(yaw)*4,1.75,me.z-Math.cos(yaw)*4);}
+ if(state){for(const a of avatars.values()){const distance=a.previous?Math.hypot(a.g.position.x-a.previous.x,a.g.position.z-a.previous.z):0;animateHuman(a,clock.elapsedTime,distance>.01,a.p.seated);a.previous={x:a.g.position.x,z:a.g.position.z};}const p=avatars.get(state.me);if(p){p.g.position.set(me.x,0,me.z);p.g.visible=(!me.seat || state.players[state.turn]?.id===state.me)}if(originalBack.texture!==lastBackTexture){lastBackTexture=originalBack.texture;refreshBoard(board3d,state,originalBack)}}
  renderer.render(scene,camera)}
 animate();
 </script></body></html>
