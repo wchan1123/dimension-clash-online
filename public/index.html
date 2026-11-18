@@ -140,6 +140,10 @@ if(state.players.some(p=>Array.isArray(p.revealedTraps)&&p.revealedTraps.length)
   const cards=X('players').querySelectorAll('.player');
   state.players.forEach((p,i)=>{if(!p.revealedTraps?.length)return;const wrap=document.createElement('div');wrap.className='muted';wrap.textContent='공개 함정: '+p.revealedTraps.map(c=>c.name).join(', ');cards[i]?.appendChild(wrap)});
 }
+const bottomField=state.field.some(c=>c.id==='118');
+X('drawTop').textContent=bottomField?'필드 효과: 맨 아래에서 뽑기':'맨 위';
+X('drawBottom').textContent='맨 아래';
+X('drawBottom').disabled=!playing||bottomField;
 const pending=state.pending;
 reactions.classList.toggle('hidden',!pending);
 if(pending){
