@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {setTimeout as delay} from 'node:timers/promises';
+import {fileURLToPath} from 'node:url';
+import {dirname,resolve} from 'node:path';
+import {io} from 'socket.io-client';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+function request(s,event,data={}){return new Promise((resolve,reject)=>s.timeout(3500).emit(event,data,(err,r)=>err?reject(err):resolve(r)));}
+const timeout=(ms=8000)=>new Promise((_,reject)=>setTimeout(()=>reject(Error('state timeout')),ms));
+test('3 real Socket.IO clients: private hands, sequential reactions, round count, reconnect', {timeout:30000}, async(t)=>{
+ const port=37000+(process.pid%20000),url='http://127.0.0.1:'+port;
+ const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
+ let stderr='';child.stderr.on('data',d=>stderr+=d.toString());
+ t.after(()=>child.kill('SIGTERM'));
+ let live=false;
+ for(let i=0;i<80;i++){try{const r=await fetch(url+'/api/cards');if(r.ok){live=true;break}}catch{} await delay(70)}
+ assert.equal(live,true,'local game server must start: '+stderr);
+ const clients=[];const states=new Map();
+ const connect=async()=>{const s=io(url,{transports:['websocket'],reconnection:false,forceNew:true,timeout:3000});clients.push(s);s.on('state',v=>states.set(s,v));await Promise.race([once(s,'connect'),timeout(4000)]);return s;};
+ t.after(()=>clients.forEach(s=>s.disconnect()));
+ const [a,b,c]=await Promise.all([connect(),connect(),connect()]);
+ const create=await request(a,'create',{name:'A'});
+ assert.equal(create.ok,true);
+ const bj=await request(b,'join',{code:create.code,name:'B'});
+ const cj=await request(c,'join',{code:create.code,name:'C'});
+ assert.equal(bj.ok,true);assert.equal(cj.ok,true);
+ const start=await request(a,'start');
+ assert.equal(start.ok,true);
+ await delay(100);
+ const as=states.get(a),bs=states.get(b),cs=states.get(c);
+ assert.deepEqual([as.hand.length,bs.hand.length,cs.hand.length],[3,3,3]);
+ assert.equal(new Set([...as.hand,...bs.hand,...cs.hand].map(x=>x.id)).size,9);
+ assert.ok(as.players.every(p=>!('hand' in p)),'other hands must remain private');
+ const original=as.hand.find(x=>!['007','070','118','119'].includes(x.id))||as.hand[0];
+ assert.equal((await request(a,'announce',{cardId:original.id})).ok,true);
+ assert.equal((await request(c,'react',{choice:'pass'})).ok,false,'C cannot respond before B');
+ assert.equal((await request(b,'react',{choice:'pass'})).ok,true);
+ assert.equal((await request(b,'react',{choice:'pass'})).ok,false,'B cannot respond twice');
+ assert.equal((await request(c,'react',{choice:'pass'})).ok,true);
+ await delay(60);
+ if(states.get(a).pending){assert.equal(states.get(a).pending.stage,'ready');assert.equal((await request(a,'resolve')).ok,true);}
+ assert.equal((await request(b,'next')).ok,false,'B cannot finish A turn');
+ assert.equal((await request(a,'next')).ok,true);
+ await delay(60);assert.equal(states.get(a).turn,1);assert.equal(states.get(a).left,5);
+ assert.equal((await request(b,'next')).ok,true);
+ assert.equal((await request(c,'next')).ok,true);
+ await delay(60);assert.equal(states.get(a).turn,0);assert.equal(states.get(a).left,4);
+ const previous=states.get(b).hand.map(x=>x.id).sort();
+ b.disconnect();
+ const reconnected=await connect();
+ const rejoin=await request(reconnected,'join',{code:create.code,token:bj.token});
+ assert.equal(rejoin.ok,true);
+ await delay(70);
+ assert.deepEqual(states.get(reconnected).hand.map(x=>x.id).sort(),previous);
+});
