@@ -1,0 +1,1 @@
+export function advanceTurn({turn,playerCount,roundsRemaining}){if(!Number.isInteger(playerCount)||playerCount<2)throw Error('2명 이상 필요');if(turn<0||turn>=playerCount||roundsRemaining<1)throw Error('잘못된 턴');const next=(turn+1)%playerCount;return {turn:next,roundFinished:next===0,roundsRemaining:roundsRemaining-(next===0?1:0)};}
