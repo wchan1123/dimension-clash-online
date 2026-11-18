@@ -6,7 +6,7 @@ import {io} from 'socket.io-client';
 const request=(s,name,data={})=>new Promise((resolve,reject)=>s.timeout(5000).emit(name,data,(err,result)=>err?reject(err):resolve(result)));
 test('a hidden trap stays secret until activation, then goes to graveyard; field is one card', {timeout:30000}, async t=>{
  const port=46000+(process.pid%11000),url='http://127.0.0.1:'+port;
- const child=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port)},stdio:'ignore'});
+ const child=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),NODE_ENV:'test'},stdio:'ignore'});
  t.after(()=>child.kill('SIGTERM'));
  let up=false;for(let i=0;i<75;i++){try{const r=await fetch(url+'/api/cards');if(r.ok){up=true;break}}catch{}await delay(80)}assert.ok(up);
  const join=async()=>{const s=io(url,{transports:['websocket'],forceNew:true,reconnection:false});await new Promise((resolve,reject)=>{s.once('connect',resolve);s.once('connect_error',reject)});t.after(()=>s.disconnect());return s};
@@ -15,7 +15,7 @@ test('a hidden trap stays secret until activation, then goes to graveyard; field
  const room=await request(a,'create',{name:'Alice'});assert.equal(room.ok,true);
  assert.equal((await request(b,'join',{code:room.code,name:'Bob'})).ok,true);
  assert.equal((await request(a,'start')).ok,true);
- for(let i=0;i<12&&as.hand.filter(c=>c.type==='trap').length<1;i++)assert.equal((await request(a,'draw',{count:10})).ok,true);
+ assert.equal((await request(a,'testGrant',{cards:['081','118','119']})).ok,true);
  const trap=as.hand.find(c=>c.type==='trap');assert.ok(trap,'must have a trap');
  assert.equal((await request(a,'move',{cardId:trap.id,destination:'field'})).ok,false,'trap cannot occupy field slot');
  assert.equal((await request(a,'move',{cardId:trap.id,destination:'trap'})).ok,true);
@@ -28,7 +28,7 @@ test('a hidden trap stays secret until activation, then goes to graveyard; field
  assert.equal((await request(a,'finishTrap')).ok,true);
  assert.equal(as.myTraps.length,0);assert.equal(bs.trapReveal,null);
  assert.equal(as.discard[0].id,trap.id);
- for(let i=0;i<12&&as.hand.filter(c=>c.type==='field').length<2;i++)assert.equal((await request(a,'draw',{count:10})).ok,true);
+ // The deterministic test fixture granted two field cards above.
  const fields=as.hand.filter(c=>c.type==='field');assert.equal(fields.length>=2,true);
  assert.equal((await request(a,'move',{cardId:fields[0].id,destination:'field'})).ok,true);
  assert.equal((await request(a,'move',{cardId:fields[1].id,destination:'field'})).ok,true);
