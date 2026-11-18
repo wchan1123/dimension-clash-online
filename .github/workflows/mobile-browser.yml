@@ -1,0 +1,24 @@
+name: Mobile and Multiplayer Browser Tests
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install game dependencies
+        run: npm install
+      - name: Install Playwright runner
+        run: npm install --no-save @playwright/test@1.56.1
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test 320/375/390px mobile multiplayer flows
+        run: npx playwright test
