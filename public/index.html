@@ -10,4 +10,95 @@ socket.on('connect',()=>{el('connection').textContent='● 연결됨';const t=sa
 socket.on('disconnect',()=>el('connection').textContent='○ 연결 끊김');socket.on('state',s=>{state=s;render()});
 el('roomcode').value=new URLSearchParams(location.search).get('room')||'';el('create').onclick=()=>emit('create',{name:el('nickname').value});el('join').onclick=()=>emit('join',{name:el('nickname').value,code:el('roomcode').value});el('share').onclick=()=>navigator.clipboard.writeText(location.origin+'/?room='+state.code).then(()=>notify('링크 복사 완료'));el('saveRounds').onclick=()=>emit('rounds',{count:+el('rounds').value});el('start').onclick=()=>emit('start');el('next').onclick=()=>emit('next');el('drawTop').onclick=()=>emit('draw',{count:+el('count').value,where:'top'});el('drawBottom').onclick=()=>emit('draw',{count:+el('count').value,where:'bottom'});el('move').onclick=()=>{if(!selected)return notify('카드를 선택하세요');emit('move',{cardId:selected,destination:el('destination').value,targetId:el('recipient').value})};el('apply').onclick=()=>emit('manual',{type:el('manual').value,targetId:el('target').value,count:+el('manualCount').value});el('declare').onclick=()=>emit('declare');el('restart').onclick=()=>emit('restart');el('saveCard').onclick=()=>{if(!selected)return;emit('editCard',{cardId:selected,type:el('type').value,description:el('description').value})};
 function render(){const s=state;if(!s)return;el('login').classList.add('hidden');el('app').classList.remove('hidden');const owner=s.owner===s.me,play=s.status==='playing';el('code').textContent=s.code;el('lobby').classList.toggle('hidden',s.status!=='lobby');el('progress').classList.toggle('hidden',s.status==='lobby');el('game').classList.toggle('hidden',s.status==='lobby');el('rounds').value=s.rounds;el('rounds').disabled=!owner;el('saveRounds').disabled=!owner;el('start').disabled=!owner;el('remaining').textContent=s.left+' / '+s.rounds;el('current').textContent=s.status==='finished'?(s.winner?'🏆 '+s.players.find(p=>p.id===s.winner)?.name+' 승리!':'게임 종료'):s.players[s.turn]?.name;el('next').disabled=!play||s.players[s.turn]?.id!==s.me;el('players').innerHTML=s.players.map((p,i)=>'<div class="player '+(i===s.turn&&play?'active':'')+'"><strong>'+safe(p.name)+(p.id===s.me?' (나)':'')+'</strong><div class="muted">'+(p.connected?'접속 중':'연결 끊김')+'</div>손패 '+p.count+'장 · 함정 '+p.traps+'장</div>').join('');const opts=(items,old)=>items.map(p=>'<option value="'+safe(p.id)+'" '+(p.id===old?'selected':'')+'>'+safe(p.name)+'</option>').join('');const a=el('target').value,b=el('recipient').value;el('target').innerHTML=opts(s.players,a);el('recipient').innerHTML=opts(s.players.filter(p=>p.id!==s.me),b);el('deck').textContent=s.deck;const mini=arr=>arr.length?arr.map(c=>'<span class="smallcard">'+safe(c.name)+'</span>').join(''):'<span class="muted">없음</span>';el('field').innerHTML=mini(s.field);el('discard').innerHTML=mini(s.discard.slice(0,2));el('traps').innerHTML=mini(s.myTraps);el('logs').innerHTML=s.logs.map(l=>'<div class="log">'+safe(l)+'</div>').join('');el('handCount').textContent='('+s.hand.length+'장)';if(!s.hand.some(c=>c.id===selected))selected=null;el('hand').innerHTML=s.hand.map(c=>'<button class="card '+(c.id===selected?'selected':'')+'" data-card="'+c.id+'"><small>#'+c.id+'</small><b>'+safe(c.name)+'</b><span class="chip">'+safe(c.type)+'</span></button>').join('');el('hand').querySelectorAll('[data-card]').forEach(b=>b.onclick=()=>{selected=b.dataset.card;render()});const c=s.hand.find(x=>x.id===selected);el('info').innerHTML=c?'<b>'+safe(c.id)+' · '+safe(c.name)+'</b><p>'+safe(c.description||'원본 효과 미등록 · 수동 처리 필요')+'</p>':'손패 카드를 선택하세요';el('editor').classList.toggle('hidden',!owner||!c);if(c){el('type').value=c.type;el('description').value=c.description||''}el('declare').disabled=!play||s.hand.length<10;el('move').disabled=!play;el('drawTop').disabled=!play;el('drawBottom').disabled=!play;el('apply').disabled=!play;el('restart').disabled=!owner;}
-</script></body></html>
+</script>
+<style id="v3-design">
+:root{--sky:#83f5c9;--cream:#fff3d8}
+body{background:radial-gradient(circle at 50% -20%,#63318d 0%,#241137 50%,#160b24 100%);color:var(--cream)}
+main{max-width:1540px}
+header{padding:12px 0 20px}
+.panel{background:linear-gradient(150deg,#36204b 10%,#22132e 100%);border-color:#74548c}
+#players{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+#players .player{border-radius:17px}
+#game.grid{grid-template-columns:minmax(0,1fr) 280px}
+.table{min-height:255px;margin:12px 0;border-radius:30% / 22%;background:radial-gradient(ellipse,#46246e 0%,#2c1644 56%,#170d2a 100%)}
+.hand{gap:10px;padding:15px 7px 26px;scroll-snap-type:x proximity;min-height:240px}
+.hand .card{position:relative;display:block;padding:0!important;flex:0 0 148px;height:207px;border:2px solid #7cf7c3;border-radius:11px;background-color:#371e57;box-shadow:0 13px 24px #07020c70;transition:transform .13s ease,filter .13s ease;scroll-snap-align:start}
+.hand .card:hover,.hand .card:focus-visible{transform:translateY(-9px);filter:brightness(1.1);z-index:2}
+.hand .card.selected{border-color:#ffdd8a;outline:3px solid #ffdd8a65}
+.hand .card>*{display:none!important}
+.card-art{display:block;position:relative;aspect-ratio:178.58 / 249.45;border:2px solid var(--sky);border-radius:12px;background-color:#3a2152;background-repeat:no-repeat;background-size:333.333% 337.5%;overflow:hidden;box-shadow:0 9px 22px #0007}
+.large-art{width:min(290px,72vw);margin:auto;box-shadow:0 15px 45px #0009}
+#quickGuide{padding:12px 16px;background:#1c1126;border:1px solid #6e5281;border-radius:12px;color:#e7d7eb;margin-bottom:12px}
+#stageBanner{margin:0 0 16px;border:2px solid var(--sky);border-radius:16px;background:linear-gradient(95deg,#213b42,#30204d);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#stageBanner strong{font-size:17px}
+#stageBanner small{color:#ced2e0}
+#reactionPanel{background:#342144;border:1px solid #b994de;border-radius:16px;padding:14px;margin:0 0 15px}
+#reactionPanel button{margin-right:7px;margin-top:9px}
+#previewOverlay{position:fixed;inset:0;z-index:9999;background:#090413df;backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;padding:15px}
+#previewOverlay.open{display:flex}
+#previewOverlay .previewDialog{width:min(830px,96vw);max-height:94vh;overflow:auto;border-radius:23px;border:2px solid var(--sky);background:linear-gradient(115deg,#45255c,#261531);padding:20px;box-shadow:0 25px 85px #000b}
+.previewBody{display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
+.previewCopy{max-height:105px;overflow-y:auto;font-size:14px;color:#ded0ee}
+.previewButtons{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+.previewButtons button{flex:1 1 120px}
+.previewHeader{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:14px}
+.previewHeader h2{margin:0}
+#info{display:none}
+#game aside section.panel{padding:17px}
+#game aside h2{font-size:17px}
+#handCount{color:var(--sky)}
+#game aside .stack{gap:10px}
+#game #progress{font-size:15px}
+input:focus,select:focus,textarea:focus{outline:2px solid #7cf7c3}
+#guideMore{margin:15px 0;color:#dfcce6}
+#guideMore summary{cursor:pointer;font-weight:750;color:var(--sky);padding:5px}
+#guideMore .legacy{padding:14px;background:#231530;border-radius:14px}
+#guideMore .formgrid{margin-bottom:12px}
+#game aside .panel{scroll-margin:20px}
+#tableFronts .card-art{width:88px}
+#tableFronts{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+@media(max-width:900px){#game.grid{grid-template-columns:1fr}.previewBody{grid-template-columns:1fr}.previewBody .large-art{width:185px}.previewDialog{max-width:500px}.hand .card{flex-basis:120px;height:168px}.table{min-height:225px}#stageBanner{position:sticky;top:0;z-index:20}}
+</style>
+<div id="previewOverlay" role="dialog" aria-modal="true" aria-label="원본 카드 미리보기"><div class="previewDialog">
+<div class="previewHeader"><h2 id="previewName">카드 상세</h2><button id="closePreview" class="alt">✕ 닫기</button></div>
+<div class="previewBody"><div id="previewArt"></div><div><p class="muted" id="previewSub"></p><p id="previewDesc" class="previewCopy"></p>
+<label>대상 플레이어 (카드 전달 / 반응 선언 시)</label><select id="previewTarget"></select>
+<div class="previewButtons"><button id="announceCard">📣 카드 사용 선언</button><button id="quickDiscard" class="alt">버린 더미로</button><button id="quickTrap" class="alt">함정 설치</button><button id="quickField" class="alt">필드 배치</button><button id="quickGive" class="alt">상대에게 전달</button></div>
+<p class="muted">원본 효과를 확인한 뒤 처리하세요. 카드 사용 선언은 상대에게 반응 기회를 알리며 자동 효과를 실행하지 않습니다.</p></div></div></div></div>
+<script id="v3-interactions">
+(function(){
+const X=document.getElementById.bind(document);
+const sheet=(id)=>'/sheets/'+String(Math.ceil(Number(id)/9)).padStart(2,'0')+'.png';
+function artStyle(id){const n=Number(id)-1,c=n%3,row=Math.floor(n%9/3);return 'background-image:url("'+sheet(id)+'");background-position:'+([5.78,50,94.2][c])+'% '+([6.94,50,93.08][row])+'%;';}
+function artNode(id,large){const div=document.createElement('div');div.className='card-art'+(large?' large-art':'');div.style.cssText=artStyle(id);div.title='원본 카드 #'+id;return div;}
+const anchor=document.createElement('div');anchor.id='stageBanner';anchor.classList.add('hidden');X('app').insertBefore(anchor,X('game'));
+const reactions=document.createElement('div');reactions.id='reactionPanel';reactions.classList.add('hidden');X('game').prepend(reactions);
+const guide=document.createElement('div');guide.id='quickGuide';X('hand').before(guide);
+const details=document.createElement('details');details.id='guideMore';details.innerHTML='<summary>⚙ 고급 수동 카드 이동 / 효과 편집</summary><div class="legacy"></div>';
+const info=X('info'),parent=info.parentElement;
+parent.insertBefore(details,info);
+const form=details.querySelector('.legacy');const fields=Array.from(parent.children);const start=fields.findIndex(e=>e.classList?.contains('formgrid'));if(start>=0){let k=fields.indexOf(details)+1;for(const item of fields.slice(start)){if(item.id==='hand'||item.id==='handCount'||item.id==='guideMore'||item.id==='info')continue;if(item.classList?.contains('formgrid')||['move','editor'].includes(item.id))form.appendChild(item);}}
+X('closePreview').onclick=()=>X('previewOverlay').classList.remove('open');
+X('previewOverlay').onclick=e=>{if(e.target===X('previewOverlay'))X('previewOverlay').classList.remove('open')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')X('previewOverlay').classList.remove('open')});
+function openPreview(id){if(!state)return;const c=state.hand.find(x=>x.id===id);if(!c)return;selected=id;X('previewName').textContent=c.name;X('previewArt').replaceChildren(artNode(id,true));X('previewSub').textContent='#'+c.id+' · '+({'action':'행동','trap':'함정','counter':'카운터','field':'필드','joker':'조커'}[c.type]||c.type);X('previewDesc').textContent=c.description||'카드 이미지에 적힌 원본 효과를 확인해 주세요. 이 카드의 자동 효과는 아직 등록되지 않았습니다.';X('previewTarget').innerHTML='';for(const p of state.players.filter(p=>p.id!==state.me)){const o=document.createElement('option');o.value=p.id;o.textContent=p.name;X('previewTarget').appendChild(o);}X('previewOverlay').classList.add('open');}
+function move(dest){if(!selected)return;const c=state?.hand.find(x=>x.id===selected);if(!c)return;const targetId=X('previewTarget').value;if(dest==='player'&&!targetId){notify('대상 플레이어를 선택하세요');return;}if(['discard','player','deckBottom','deckTop'].includes(dest)&&!confirm(c.name+' 카드를 이동할까요?'))return;emit('move',{cardId:selected,destination:dest,targetId});X('previewOverlay').classList.remove('open');}
+X('quickDiscard').onclick=()=>move('discard');X('quickTrap').onclick=()=>move('trap');X('quickField').onclick=()=>move('field');X('quickGive').onclick=()=>move('player');
+X('announceCard').onclick=()=>{if(!selected)return;emit('announce',{cardId:selected,targetId:X('previewTarget').value});X('previewOverlay').classList.remove('open');};
+const oldNext=X('next').onclick;X('next').onclick=()=>{if(state?.pending){notify('카드 반응을 정리한 다음 턴을 종료하세요.');return;}if(confirm('정말 턴을 종료하고 다음 플레이어에게 넘길까요?'))oldNext();};
+const orig=render;render=function(){orig();enhance();};
+function enhance(){if(!state)return;
+const playing=state.status==='playing',mine=playing&&state.players[state.turn]?.id===state.me;
+anchor.classList.remove('hidden');
+anchor.innerHTML='<div><strong>'+(state.status==='lobby'?'✦ 게임 시작 준비':state.status==='finished'?'✦ 게임 종료':mine?'✦ 당신의 차례입니다':'⌛ '+(state.players[state.turn]?.name||'')+'님의 차례')+'</strong><div><small>남은 바퀴 '+state.left+' / '+state.rounds+' · 손패 '+state.hand.length+'장 · '+state.players.length+'인 게임</small></div></div><span class="status">'+(mine?'카드 선택 → 효과 처리 → 턴 종료':'게임 상태 동기화 중')+'</span>';
+guide.innerHTML=mine?'① 아래 원본 카드를 클릭해서 확대하세요.　② 카드 효과를 확인하고 사용 선언 또는 이동을 선택하세요.　③ 처리가 끝나면 턴 종료를 누르세요.':'원본 카드를 클릭하면 확대해 볼 수 있어요. 상대방 카드 선언에 반응할 수도 있어요.';
+X('hand').querySelectorAll('[data-card]').forEach(btn=>{const id=btn.dataset.card;btn.style.cssText=artStyle(id);btn.title='#'+id+' '+(state.hand.find(c=>c.id===id)?.name||'')+' · 클릭해서 확대';btn.setAttribute('aria-label',btn.title);btn.onclick=()=>openPreview(id);});
+const field=X('field');field.innerHTML='';const fieldCards=document.createElement('div');fieldCards.id='tableFronts';for(const c of state.field){const v=artNode(c.id,false);v.title=c.name;fieldCards.appendChild(v);}field.appendChild(fieldCards);if(!state.field.length)field.textContent='없음';
+const d=X('discard');d.innerHTML='';if(state.discard?.length){const v=artNode(state.discard[0].id,false);v.style.width='79px';v.title=state.discard[0].name;d.appendChild(v)}else d.textContent='없음';
+X('traps').innerHTML='';const t=document.createElement('div');t.style.cssText='display:flex;flex-wrap:wrap;gap:8px';for(const c of state.myTraps){const v=artNode(c.id);v.style.width='82px';v.title=c.name;t.appendChild(v);}X('traps').appendChild(t);if(!state.myTraps.length)X('traps').textContent='없음';
+const pending=state.pending;reactions.classList.toggle('hidden',!pending);if(pending){reactions.innerHTML='';const text=document.createElement('strong');text.textContent='⚡ 반응 기회: '+(pending.actorName||'플레이어')+'님이 '+(pending.cardName||'카드')+' 사용을 선언했습니다.';reactions.appendChild(text);const p=document.createElement('p');p.className='muted';p.textContent='상대의 함정·카운터 여부를 확인하고 수동으로 효과를 처리하세요.';reactions.appendChild(p);const b=(label,fn)=>{const z=document.createElement('button');z.textContent=label;z.onclick=fn;reactions.appendChild(z)};if(pending.actorId===state.me){b('반응 처리 완료 · 진행하기',()=>emit('resolve'));}else{b('반응 없음',()=>emit('react',{choice:'pass'}));b('카운터/함정 반응 선언',()=>emit('react',{choice:'counter'}));}if(pending.responses?.length){const q=document.createElement('p');q.className='muted';q.textContent=pending.responses.map(x=>x.name+': '+(x.choice==='counter'?'반응 선언':'패스')).join(' · ');reactions.appendChild(q)}}
+}
+if(state)render();
+})();
+</script>
+</body></html>
