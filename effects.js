@@ -1,7 +1,10 @@
 // Engine supports deterministic, server-authoritative priority. Card effects are
 // enabled only when their wording has been verified from the supplied Figma art.
 export const VERIFIED_EFFECTS=Object.freeze({
-  '007': {kind:'draw_all',count:4,source:'Figma 007: 모든 플레이어가 카드를 4장씩 뽑습니다.'}
+  '007': {kind:'draw_all',count:4,source:'Figma 007: 모든 플레이어가 카드를 4장씩 뽑습니다.'},
+  '070': {kind:'negate_action',source:'Figma 070: 사용된 행동카드의 효과를 무효화합니다.'},
+  '118': {kind:'bottom_draw_field',source:'Figma 118: 덱 아래부터 뽑습니다.'},
+  '119': {kind:'faceup_traps_field',source:'Figma 119: 모든 함정을 앞면으로 설치합니다. 새 함정도 앞면으로 설치합니다.'}
 });
 export function clockwiseOrder(players,actingId){
   const at=players.findIndex(x=>x.id===actingId);
@@ -47,5 +50,7 @@ export function applyVerifiedCard(r,top,drawFn){
     for(const p of r.players)count+=drawFn(r,p,spec.count);
     return {automated:true,message:'전원 카드 '+spec.count+'장씩 뽑기 ('+count+'장 지급)'};
   }
-  return {automated:false,message:'미지원 효과'};
+  if(spec.kind==='bottom_draw_field')return {automated:true,message:'필드 발동: 카드 뽑기 방향을 덱 아래로 변경'};
+  if(spec.kind==='faceup_traps_field')return {automated:true,message:'필드 발동: 설치된 함정 공개'};
+  return {automated:false,message:'조건부 대응 효과'};
 }
