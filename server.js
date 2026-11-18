@@ -137,11 +137,14 @@ action(s,'announce',(r,p,{cardId,targetId})=>{
   if(r.pending)return '기존 카드 반응부터 처리하세요';
   if(!p.hand.includes(cardId))return '내 손패에 없는 카드입니다';
   const chosen=card(r,cardId);if(chosen.type!=='action')return '기본 사용 선언은 행동카드만 가능합니다';
+  if(targetId!=null && (!r.players.some(x=>x.id===targetId)||targetId===p.id))return '유효한 상대 플레이어를 선택하세요';
   r.turnAction='action';r.pending=createPriority(r.players,p,chosen,targetId||null);
-  r.showcase={cardId,cardName:chosen.name,actorName:p.name,actorId:p.id,at:Date.now()};
-  event(r,p,'action',p.name+'님이 '+chosen.name+' 행동카드를 사용했습니다',cardId);
+  r.showcase={cardId,cardName:chosen.name,actorName:p.name,actorId:p.id,targetId:targetId||null,at:Date.now(),kind:'action'};
+  const recipient=r.players.find(x=>x.id===targetId);
+  event(r,p,'action',p.name+'님이 '+(recipient?recipient.name+'님을 가리키며 ':'')+chosen.name+' 행동카드를 사용했습니다',cardId);
+  r.actionEvent.targetId=targetId||null;
 });
-action(s,'react',(r,p,{choice,cardId})=>{
+action(s,'react',(r,p,{choice,cardId,targetId})=>{
   const w=r.pending;
   if(!w)return '반응할 카드가 없어요';
   if(currentResponder(w)!==p.id)return '현재 '+(r.players.find(x=>x.id===currentResponder(w))?.name||'다른 플레이어')+'님의 반응 순서입니다';
@@ -150,17 +153,22 @@ action(s,'react',(r,p,{choice,cardId})=>{
     if(!cardId)return '대응할 카드를 선택하세요';
     const chosen=card(r,cardId);
     if(!chosen)return '존재하지 않는 카드입니다';
+    if(chosen.type!=='counter' && chosen.type!=='trap')return '카운터 대응에는 카운터 또는 설치된 함정만 사용할 수 있습니다';
+    if(targetId!=null && (!r.players.some(x=>x.id===targetId)||targetId===p.id))return '유효한 대응 대상을 선택하세요';
     const previous=w.stack.at(-1);
     if(cardId==='070'&&card(r,previous.cardId)?.type!=='action')return '와 샌즈!는 행동 카드에만 사용할 수 있습니다';
     if(cardId!=='070')w.unknownResponse=true;
     const inHand=p.hand.includes(cardId),inTrap=p.traps.includes(cardId);
     if(!inHand&&!inTrap)return '내가 가지고 있거나 설치한 카드가 아닙니다';
     const source=inTrap?'trap':'hand';
-    playResponse(w,r.players,p,chosen,source);
+    playResponse(w,r.players,p,chosen,source,targetId||previous.actorId);
     const list=source==='trap'?p.traps:p.hand;
     list.splice(list.indexOf(cardId),1);
     r.discard.push(cardId);
-    log(r,p.name+'님이 '+chosen.name+' 대응 선언 (효과는 원본 규칙대로 수동 확인)');
+    const recipient=r.players.find(x=>x.id===(targetId||previous.actorId));
+    r.showcase={cardId,cardName:chosen.name,actorName:p.name,actorId:p.id,targetId:recipient?.id||null,kind:'counter',at:Date.now()};
+    event(r,p,'counter',p.name+'님이 '+(recipient?recipient.name+'님에게 ':'')+chosen.name+' 카운터 선언',cardId);
+    r.actionEvent.targetId=recipient?.id||null;
   }else return '잘못된 대응입니다';
   autoResolve(r);
 });
