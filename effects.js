@@ -10,7 +10,7 @@ export function clockwiseOrder(players,actingId){
 }
 export function createPriority(players,actorId,cardId,cardName,targetId){
   return {actorId,actorName:players.find(p=>p.id===actorId).name,cardId,cardName,targetId:targetId||null,
-    order:clockwiseOrder(players,actorId),cursor:0,responses:[],counter:null,stage:players.length>1?'responding':'ready'};
+    order:clockwiseOrder(players,actorId),cursor:0,responses:[],counters:[],stage:players.length>1?'responding':'ready'};
 }
 export function currentResponder(pending){return pending?.stage==='responding'?pending.order[pending.cursor]||null:null;}
 export function passPriority(pending,player){
@@ -25,7 +25,7 @@ export function playCounter(pending,player,cardId,players){
   if(!player.hand.includes(cardId))throw new Error('손패에 없는 카운터입니다');
   player.hand.splice(player.hand.indexOf(cardId),1);
   pending.responses.push({playerId:player.id,name:player.name,choice:'counter',cardId});
-  pending.counter={actorId:player.id,cardId,negates:pending.cardId};
+  pending.counters.push({actorId:player.id,cardId});
   pending.order=clockwiseOrder(players,player.id);pending.cursor=0;
   pending.stage=pending.order.length?'responding':'ready';
 }
@@ -34,3 +34,5 @@ export function drawAllEffect(players,drawFn,count=4){
   for(const p of players)total+=drawFn(p,count);
   return total;
 }
+
+export function isOriginalCancelled(pending){return (pending.counters.length%2)===1;}
