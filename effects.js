@@ -1,38 +1,51 @@
-// Only effects verified against the original Figma card faces belong here.
-// Unknown effects intentionally remain manual rather than guessing.
+// Engine supports deterministic, server-authoritative priority. Card effects are
+// enabled only when their wording has been verified from the supplied Figma art.
 export const VERIFIED_EFFECTS=Object.freeze({
-  '007': {type:'draw_all',count:4,source:'Figma card 007: 모든 플레이어가 카드를 4장씩 뽑습니다.'}
+  '007': {kind:'draw_all',count:4,source:'Figma 007: 모든 플레이어가 카드를 4장씩 뽑습니다.'}
 });
 export function clockwiseOrder(players,actingId){
-  const start=players.findIndex(p=>p.id===actingId);
-  if(start<0)throw new Error('Unknown acting player');
-  return Array.from({length:players.length-1},(_,i)=>players[(start+i+1)%players.length].id);
+  const at=players.findIndex(x=>x.id===actingId);
+  if(at<0)throw Error('unknown actor');
+  return Array.from({length:players.length-1},(_,i)=>players[(at+i+1)%players.length].id);
 }
-export function createPriority(players,actorId,cardId,cardName,targetId){
-  return {actorId,actorName:players.find(p=>p.id===actorId).name,cardId,cardName,targetId:targetId||null,
-    order:clockwiseOrder(players,actorId),cursor:0,responses:[],counters:[],stage:players.length>1?'responding':'ready'};
+export function createPriority(players,actor,card,targetId=null){
+  if(players.length<2)throw Error('at least two players');
+  return {actorId:actor.id,actorName:actor.name,cardId:card.id,cardName:card.name,targetId,
+    stack:[{actorId:actor.id,actorName:actor.name,cardId:card.id,cardName:card.name,targetId,source:'hand'}],
+    order:clockwiseOrder(players,actor.id),cursor:0,responses:[],stage:'responding',manualResponses:false};
 }
-export function currentResponder(pending){return pending?.stage==='responding'?pending.order[pending.cursor]||null:null;}
-export function passPriority(pending,player){
-  if(currentResponder(pending)!==player.id)throw new Error('현재 대응 순서가 아닙니다');
-  pending.responses.push({playerId:player.id,name:player.name,choice:'pass'});
-  pending.cursor+=1;
-  if(pending.cursor>=pending.order.length)pending.stage='ready';
+export function currentResponder(w){return w?.stage==='responding'?w.order[w.cursor]||null:null;}
+export function passPriority(w,p){
+  if(currentResponder(w)!==p.id)throw Error('현재 대응 순서가 아닙니다');
+  w.responses.push({playerId:p.id,name:p.name,choice:'pass',cardId:null});
+  if(++w.cursor===w.order.length)w.stage='ready';
+  return w;
 }
-export function playCounter(pending,player,cardId,players){
-  if(currentResponder(pending)!==player.id)throw new Error('현재 대응 순서가 아닙니다');
-  if(cardId!=='080')throw new Error('검증된 대응 카드만 자동 처리할 수 있습니다');
-  if(!player.hand.includes(cardId))throw new Error('손패에 없는 카운터입니다');
-  player.hand.splice(player.hand.indexOf(cardId),1);
-  pending.responses.push({playerId:player.id,name:player.name,choice:'counter',cardId});
-  pending.counters.push({actorId:player.id,cardId});
-  pending.order=clockwiseOrder(players,player.id);pending.cursor=0;
-  pending.stage=pending.order.length?'responding':'ready';
+export function playResponse(w,players,p,c,source='hand'){
+  if(currentResponder(w)!==p.id)throw Error('현재 대응 순서가 아닙니다');
+  w.responses.push({playerId:p.id,name:p.name,choice:'counter',cardId:c.id});
+  w.stack.push({actorId:p.id,actorName:p.name,cardId:c.id,cardName:c.name,targetId:null,source});
+  w.manualResponses=true;
+  w.order=clockwiseOrder(players,p.id);w.cursor=0;w.stage='responding';
+  return w;
 }
-export function drawAllEffect(players,drawFn,count=4){
-  let total=0;
-  for(const p of players)total+=drawFn(p,count);
-  return total;
+export function finishTop(w,players){
+  if(w.stage!=='ready')throw Error('먼저 대응 순서를 완료해야 합니다');
+  const top=w.stack.pop();
+  if(!top)throw Error('카운터 스택이 비었습니다');
+  if(w.stack.length){
+    const parent=w.stack.at(-1);
+    w.order=clockwiseOrder(players,parent.actorId);w.cursor=0;w.stage='responding';
+  }else w.stage='done';
+  return top;
 }
-
-export function isOriginalCancelled(pending){return (pending.counters.length%2)===1;}
+export function applyVerifiedCard(r,top,drawFn){
+  const spec=VERIFIED_EFFECTS[top.cardId];
+  if(!spec)return {automated:false,message:'원본 효과 수동 처리 필요'};
+  if(spec.kind==='draw_all'){
+    let count=0;
+    for(const p of r.players)count+=drawFn(r,p,spec.count);
+    return {automated:true,message:'전원 카드 '+spec.count+'장씩 뽑기 ('+count+'장 지급)'};
+  }
+  return {automated:false,message:'미지원 효과'};
+}
