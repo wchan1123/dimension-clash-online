@@ -24,10 +24,10 @@ export function passPriority(w,p){
   if(++w.cursor===w.order.length)w.stage='ready';
   return w;
 }
-export function playResponse(w,players,p,c,source='hand'){
+export function playResponse(w,players,p,c,source='hand',targetId=null){
   if(currentResponder(w)!==p.id)throw Error('현재 대응 순서가 아닙니다');
   w.responses.push({playerId:p.id,name:p.name,choice:'counter',cardId:c.id});
-  w.stack.push({actorId:p.id,actorName:p.name,cardId:c.id,cardName:c.name,targetId:null,source});
+  w.stack.push({actorId:p.id,actorName:p.name,cardId:c.id,cardName:c.name,targetId,source});
   w.manualResponses=true;
   w.order=clockwiseOrder(players,p.id);w.cursor=0;w.stage='responding';
   return w;
