@@ -66,7 +66,7 @@ export function cardTexture(id,backImage){
 export function loadBack(){
  const state={texture:null};
  const loader=new THREE.TextureLoader();
- loader.load('/card-back.jpg',t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;state.texture=t;},undefined,()=>{});
+ loader.load('/card-back.webp',t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;state.texture=t;},undefined,()=>{});
  return state;
 }
 export function placeCard(parent,frontId,back,offset=0){
