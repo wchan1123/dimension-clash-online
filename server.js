@@ -12,14 +12,46 @@ const id=()=>randomBytes(10).toString('hex');
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){let j=randomInt(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
 const card=(r,c)=>r.cards.find(x=>x.id===c);
 const log=(r,t)=>{r.logs.unshift(t);r.logs.length=Math.min(60,r.logs.length)};
-const visible=(r,p)=>({code:r.code,me:p.id,owner:r.owner,status:r.status,turn:r.turn,rounds:r.rounds,left:r.left,winner:r.winner,players:r.players.map(x=>({id:x.id,name:x.name,count:x.hand.length,traps:x.traps.length,connected:x.connected})),hand:p.hand.map(x=>card(r,x)),myTraps:p.traps.map(x=>card(r,x)),deck:r.deck.length,discard:r.discard.slice(-12).reverse().map(x=>card(r,x)),field:r.field.map(x=>card(r,x)),logs:r.logs,pending:r.pending?{...r.pending,responses:r.pending.responses.map(x=>({name:x.name,choice:x.choice}))}:null,catalog:r.cards});
+const visible=(r,p)=>({code:r.code,me:p.id,owner:r.owner,status:r.status,turn:r.turn,rounds:r.rounds,left:r.left,winner:r.winner,players:r.players.map(x=>({id:x.id,name:x.name,count:x.hand.length,traps:x.traps.length,connected:x.connected,revealedTraps:r.field.includes('119')?x.traps.map(t=>card(r,t)):null})),hand:p.hand.map(x=>card(r,x)),myTraps:p.traps.map(x=>card(r,x)),deck:r.deck.length,discard:r.discard.slice(-12).reverse().map(x=>card(r,x)),field:r.field.map(x=>card(r,x)),logs:r.logs,pending:r.pending?{...r.pending,responses:r.pending.responses.map(x=>({name:x.name,choice:x.choice}))}:null,catalog:r.cards});
 const send=r=>r.players.forEach(p=>p.socket&&io.to(p.socket).emit('state',visible(r,p)));
 function consume(r,actorId,cardId){const p=r.players.find(x=>x.id===actorId);if(!p)return;const index=p.hand.indexOf(cardId);if(index>=0){p.hand.splice(index,1);const c=card(r,cardId);if(c.type==='field')r.field.push(cardId);else if(c.type==='trap')p.traps.push(cardId);else r.discard.push(cardId);}}
-function autoResolve(r){const w=r.pending;if(!w||w.stage!=='ready'||w.stack.length!==1||w.manualResponses||!VERIFIED_EFFECTS[w.cardId])return;const top=finishTop(w,r.players);const result=applyVerifiedCard(r,top,draw);consume(r,top.actorId,top.cardId);log(r,top.cardName+': '+result.message);r.pending=null;}
+function autoResolve(r){
+ const w=r.pending;
+ if(!w||w.stage!=='ready')return;
+ const top=w.stack.at(-1);
+ if(!top)return;
+ // A verified '와 샌즈!' negates only the immediately preceding action card.
+ if(top.cardId==='070'&&w.stack.length>1&&!w.unknownResponse){
+   const preceding=w.stack.at(-2);
+   if(card(r,preceding.cardId)?.type==='action'){
+     finishTop(w,r.players);
+     w.cancelledCardIds??=[];
+     w.cancelledCardIds.push(preceding.cardId);
+     log(r,'와 샌즈! → '+preceding.cardName+' 행동 효과를 무효화했습니다.');
+     return;
+   }
+ }
+ // After all priority passes, a verified negation discards the original without its effect.
+ if(w.stack.length===1&&w.cancelledCardIds?.includes(top.cardId)){
+   finishTop(w,r.players);
+   consume(r,top.actorId,top.cardId);
+   log(r,top.cardName+' 무효화 완료');
+   r.pending=null;
+   return;
+ }
+ // Cards with unverified responses are always left for manual adjudication.
+ if(w.stack.length===1&&!w.manualResponses&&VERIFIED_EFFECTS[top.cardId]){
+   const resolved=finishTop(w,r.players);
+   const result=applyVerifiedCard(r,resolved,draw);
+   consume(r,resolved.actorId,resolved.cardId);
+   log(r,resolved.cardName+': '+result.message);
+   r.pending=null;
+ }
+}
 
 const respond=(cb,error)=>cb?.(error?{ok:false,error}:{ok:true});
 function get(s,cb){const ref=sessions.get(s.id),r=ref&&rooms.get(ref.room),p=r?.players.find(x=>x.id===ref.player);if(!p){respond(cb,'먼저 방에 들어가 주세요');return null;}return {r,p};}
-function draw(r,p,n=1,where='top'){let x=0;while(x<n&&r.deck.length){p.hand.push(where==='bottom'?r.deck.shift():r.deck.pop());x++;}return x;}
+function draw(r,p,n=1,where='top'){let x=0;while(x<n&&r.deck.length){p.hand.push((where==='bottom'||r.field.includes('118'))?r.deck.shift():r.deck.pop());x++;}return x;}
 function action(s,name,fn){s.on(name,(data={},cb)=>{const a=get(s,cb);if(!a)return;try{const e=fn(a.r,a.p,data);if(e)return respond(cb,e);send(a.r);respond(cb);}catch(e){console.error(name,e);respond(cb,'요청 처리 실패');}});}
 io.on('connection',s=>{
 s.on('create',({name}={},cb)=>{name=String(name||'').trim().slice(0,20);if(!name)return respond(cb,'이름을 입력하세요');let code;do{code=randomBytes(3).toString('hex').toUpperCase()}while(rooms.has(code));const p={id:id(),token:id(),name,hand:[],traps:[],socket:s.id,connected:true},r={code,owner:p.id,players:[p],cards:structuredClone(CARDS),deck:[],discard:[],field:[],logs:[],rounds:5,left:5,turn:0,status:'lobby',winner:null,pending:null};rooms.set(code,r);sessions.set(s.id,{room:code,player:p.id});log(r,name+'님이 방을 만들었어요');send(r);cb?.({ok:true,code,token:p.token});});
@@ -31,7 +63,9 @@ action(s,'draw',(r,p,{count=1,where='top'})=>{if(r.status!=='playing'||r.players
 action(s,'move',(r,p,{cardId,destination,targetId})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';if(r.pending&&!(r.pending.stage==='ready'&&r.pending.stack.at(-1).actorId===p.id))return '현재 효과 처리 순서가 아닙니다';const index=p.hand.indexOf(cardId);if(index<0)return '내 손패에 없는 카드입니다';const c=card(r,cardId);if(c.type==='joker'&&!['player','deckTop','deckBottom'].includes(destination))return '조커를 이 위치로 이동할 수 없어요';const target=r.players.find(x=>x.id===targetId);if(destination==='player'&&!target)return '대상을 선택하세요';if(!['discard','trap','field','deckTop','deckBottom','player'].includes(destination))return '잘못된 위치';p.hand.splice(index,1);if(destination==='discard')r.discard.push(cardId);if(destination==='trap')p.traps.push(cardId);if(destination==='field')r.field.push(cardId);if(destination==='deckTop')r.deck.push(cardId);if(destination==='deckBottom')r.deck.unshift(cardId);if(destination==='player')target.hand.push(cardId);log(r,p.name+': '+c.name+' → '+(destination==='player'?target.name:destination));});
 action(s,'manual',(r,p,{type,targetId,count=1})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';if(r.pending&&!(r.pending.stage==='ready'&&r.pending.stack.at(-1).actorId===p.id))return '현재 효과 처리 순서가 아닙니다';const target=r.players.find(x=>x.id===targetId)||p;count=Number(count);if(!Number.isInteger(count)||count<1||count>10)return '1~10장만 가능해요';if(type==='draw'){const n=draw(r,target,count);if(!n)return '뽑는 더미가 비었어요';log(r,p.name+'님이 '+target.name+'에게 '+n+'장 지급');}else if(type==='randomDiscard'){const options=target.hand.filter(x=>card(r,x).type!=='joker');if(!options.length)return '버릴 수 있는 카드가 없어요';const c=options[randomInt(options.length)];target.hand.splice(target.hand.indexOf(c),1);r.discard.push(c);log(r,target.name+'님이 무작위로 한 장 버렸어요');}else if(type==='takeDiscard'){if(!r.discard.length)return '버린 카드 없음';target.hand.push(r.discard.pop());log(r,target.name+'님이 버린 더미에서 한 장 가져왔어요');}else return '알 수 없는 동작';});
 action(s,'declare',(r,p)=>{if(r.status!=='playing'||p.hand.length<10)return '게임 중 손패 10장 이상이어야 해요';r.winner=p.id;r.status='finished';log(r,p.name+'님이 아야겠또! 승리를 선언했어요');});
-action(s,'editCard',(r,p,{cardId,type,description})=>{if(p.id!==r.owner)return '방장만 카드 정보를 바꿀 수 있어요';const c=card(r,cardId);if(!c)return '존재하지 않는 카드';if(!['action','field','trap','counter','joker'].includes(type))return '잘못된 유형';c.type=cardId==='120'?'joker':type;c.description=String(description||'').slice(0,1000);});
+action(s,'editCard',(r,p,{cardId,type,description})=>{if(p.id!==r.owner)return '방장만 카드 정보를 바꿀 수 있어요';const c=card(r,cardId);if(!c)return '존재하지 않는 카드';if(!['action','field','trap','counter','joker'].includes(type))return '잘못된 유형';const locked={'070':'counter','118':'field','119':'field','120':'joker'};
+  if(locked[cardId]&&locked[cardId]!==type)return '원본에서 확인된 카드 유형은 바꿀 수 없어요';
+  c.type=type;c.description=String(description||'').slice(0,1000);});
 action(s,'announce',(r,p,{cardId,targetId})=>{
   if(r.status!=='playing')return '게임이 진행 중이지 않아요';
   if(r.players[r.turn].id!==p.id)return '사용 선언은 현재 플레이어만 할 수 있어요';
@@ -50,6 +84,9 @@ action(s,'react',(r,p,{choice,cardId})=>{
     if(!cardId)return '대응할 카드를 선택하세요';
     const chosen=card(r,cardId);
     if(!chosen)return '존재하지 않는 카드입니다';
+    const previous=w.stack.at(-1);
+    if(cardId==='070'&&card(r,previous.cardId)?.type!=='action')return '와 샌즈!는 행동 카드에만 사용할 수 있습니다';
+    if(cardId!=='070')w.unknownResponse=true;
     const inHand=p.hand.includes(cardId),inTrap=p.traps.includes(cardId);
     if(!inHand&&!inTrap)return '내가 가지고 있거나 설치한 카드가 아닙니다';
     const source=inTrap?'trap':'hand';
