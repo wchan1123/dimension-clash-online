@@ -42,7 +42,8 @@ export function buildBoard(scene){
  const graveAnchor=new THREE.Group();graveAnchor.position.set(1.42,1.37,.05);root.add(graveAnchor);
  const fieldAnchor=new THREE.Group();fieldAnchor.position.set(0,1.37,-.72);root.add(fieldAnchor);
  const ring=piece(root,new THREE.RingGeometry(.38,.43,56),new THREE.MeshBasicMaterial({color:0xbba3f7,side:THREE.DoubleSide,transparent:true,opacity:.7}),[0,1.36,-.72],[-Math.PI/2,0,0]);
- return {root,deckAnchor,graveAnchor,fieldAnchor};
+ const trapAnchors=[];for(let i=0;i<8;i++){const a=i*Math.PI/4;const anchor=new THREE.Group();anchor.position.set(Math.sin(a)*2.75,1.37,Math.cos(a)*2.75);anchor.rotation.y=a;root.add(anchor);trapAnchors.push(anchor)}
+ return {root,deckAnchor,graveAnchor,fieldAnchor,trapAnchors};
 }
 const textureCache=new Map(),pendingImages=new Map();
 function sheetIndex(id){return String(Math.ceil(Number(id)/9)).padStart(2,'0')}
@@ -80,10 +81,11 @@ export function placeCard(parent,frontId,back,offset=0){
 function wipe(group){while(group.children.length){const obj=group.children[0];group.remove(obj);obj.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material)){o.material.forEach(m=>m.dispose())}else o.material?.dispose?.()})}}
 export function refreshBoard(board,state,back){
  if(!state)return;
- for(const group of [board.deckAnchor,board.graveAnchor,board.fieldAnchor])wipe(group);
+ for(const group of [board.deckAnchor,board.graveAnchor,board.fieldAnchor,...board.trapAnchors])wipe(group);
  const count=Math.min(13,Math.max(0,state.deck||0));for(let i=0;i<count;i++)placeCard(board.deckAnchor,null,back,i);
  if(state.discard?.length)placeCard(board.graveAnchor,state.discard[0].id,back,0);
  if(state.field?.length)placeCard(board.fieldAnchor,state.field[0].id,back,0);
+ for(let i=0;i<(state.players||[]).length;i++){const p=state.players[i],anchor=board.trapAnchors[i];if(!anchor)continue;for(let j=0;j<Math.min(5,p.traps);j++){const face=p.revealedTraps?.[j]?.id||null;const obj=placeCard(anchor,face,back,j);obj.position.x=(j-Math.min(4,p.traps-1)/2)*.17;}}
 }
 export function makeHuman(scene,p){
  const g=new THREE.Group();scene.add(g);const primary=palette[Math.abs(p.name.length*3)%palette.length];
