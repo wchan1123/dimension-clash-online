@@ -25,6 +25,7 @@ test('one draw OR one action, target pointing, counter validation, spectator eve
  assert.equal((await req(b,'draw',{count:5})).ok,false);
  assert.equal((await req(b,'next')).ok,true);
  assert.equal((await req(a,'announce',{cardId:'007',targetId:sb.me})).ok,true);
+ await delay(100);
  assert.equal(sb.pending.targetId,sb.me);
  assert.equal(sb.actionEvent.targetId,sb.me);
  assert.match(sb.actionEvent.label,/Bob/);
