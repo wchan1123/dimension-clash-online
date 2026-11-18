@@ -6,6 +6,7 @@ import {CARDS} from './cards.js';
 import {advanceTurn} from './turns.js';
 import {VERIFIED_EFFECTS,createPriority,currentResponder,passPriority,playResponse,finishTop,applyVerifiedCard} from './effects.js';
 const app=express(),http=createServer(app),io=new Server(http),rooms=new Map(),sessions=new Map();
+app.use('/vendor',express.static('node_modules/three/build'));
 app.use(express.static('public'));
 app.get('/api/cards',(_q,r)=>r.json(CARDS));
 const id=()=>randomBytes(10).toString('hex');
