@@ -101,6 +101,11 @@ action(s,'removeBot',(r,p)=>{
  if(index===-1)return '제거할 AI가 없습니다';
  r.players.splice(index,1);log(r,'AI 상대 제거');
 });
+if(process.env.NODE_ENV==='test')action(s,'testGrant',(r,p,{cards=[]}={})=>{
+ if(p.id!==r.owner||r.status!=='playing')return 'test owner only';
+ if(!Array.isArray(cards)||cards.length>10||cards.some(id=>!r.cards.some(c=>c.id===id)))return 'bad test fixture';
+ for(const cid of cards){const j=r.deck.indexOf(cid);if(j<0)return 'fixture card not in deck';r.deck.splice(j,1);p.hand.push(cid);}
+});
 action(s,'rounds',(r,p,{count})=>{if(p.id!==r.owner||r.status!=='lobby')return '방장만 게임 전에 설정할 수 있어요';count=Number(count);if(!Number.isInteger(count)||count<1||count>100)return '1~100바퀴만 가능해요';r.rounds=count;r.left=count;log(r,'전체 '+count+'바퀴 설정');});
 action(s,'start',(r,p)=>{if(p.id!==r.owner)return '방장만 시작할 수 있어요';if(r.status!=='lobby')return '진행 중입니다';if(r.players.length<2)return '2명 이상 필요해요. 혼자라면 AI 상대를 추가하세요';r.deck=shuffle(r.cards.map(x=>x.id));r.discard=[];r.field=[];r.players.forEach((x,i)=>{x.hand=[];x.traps=[];x.seated=!!x.bot;const a=i*2*Math.PI/r.players.length;x.x=Math.sin(a)*(x.bot?4.4:6.5);x.z=Math.cos(a)*(x.bot?4.4:6.5);x.angle=a+Math.PI;draw(r,x,3)});r.left=r.rounds;r.turn=0;r.winner=null;r.pending=null;r.showcase=null;r.trapReveal=null;r.turnAction=null;r.actionEvent=null;r.status='playing';log(r,'게임 시작: 플레이어마다 3장 배분');});
 action(s,'next',(r,p)=>{if(r.status!=='playing'||r.players[r.turn].id!==p.id)return '현재 플레이어만 턴을 종료해요';if(r.pending)return '카드 반응 처리 중에는 턴을 종료할 수 없어요';advanceRoom(r);});
