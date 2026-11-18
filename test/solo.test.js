@@ -24,6 +24,6 @@ test('solo game: add AI, share deck, AI draws, AI advances its own turn', {timeo
  assert.equal(states.at(-1).players[1].count,3);
  assert.equal((await req(client,'next')).ok,true);
  await delay(2600);
- assert.equal(states.some(s=>s.players[1].count>=4),true,'AI should draw after human turn');
- assert.equal(states.some(s=>s.turn===0&&s.left===4),true,'AI must end its own turn and decrement after round');
+ assert.equal(states.some(s=>s.players?.[1]?.count>=4),true,'AI should draw after human turn');
+ assert.equal(states.some(s=>s.players?.length===2&&s.turn===0&&s.left===4),true,'AI must end its own turn and decrement after round');
 });
