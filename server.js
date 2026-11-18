@@ -4,6 +4,7 @@ import {Server} from 'socket.io';
 import {randomBytes,randomInt} from 'node:crypto';
 import {CARDS} from './cards.js';
 import {advanceTurn} from './turns.js';
+import {VERIFIED_EFFECTS,createPriority,currentResponder,passPriority,playResponse,finishTop,applyVerifiedCard} from './effects.js';
 const app=express(),http=createServer(app),io=new Server(http),rooms=new Map(),sessions=new Map();
 app.use(express.static('public'));
 app.get('/api/cards',(_q,r)=>r.json(CARDS));
@@ -13,6 +14,9 @@ const card=(r,c)=>r.cards.find(x=>x.id===c);
 const log=(r,t)=>{r.logs.unshift(t);r.logs.length=Math.min(60,r.logs.length)};
 const visible=(r,p)=>({code:r.code,me:p.id,owner:r.owner,status:r.status,turn:r.turn,rounds:r.rounds,left:r.left,winner:r.winner,players:r.players.map(x=>({id:x.id,name:x.name,count:x.hand.length,traps:x.traps.length,connected:x.connected})),hand:p.hand.map(x=>card(r,x)),myTraps:p.traps.map(x=>card(r,x)),deck:r.deck.length,discard:r.discard.slice(-12).reverse().map(x=>card(r,x)),field:r.field.map(x=>card(r,x)),logs:r.logs,pending:r.pending?{...r.pending,responses:r.pending.responses.map(x=>({name:x.name,choice:x.choice}))}:null,catalog:r.cards});
 const send=r=>r.players.forEach(p=>p.socket&&io.to(p.socket).emit('state',visible(r,p)));
+function consume(r,actorId,cardId){const p=r.players.find(x=>x.id===actorId);if(!p)return;const index=p.hand.indexOf(cardId);if(index>=0){p.hand.splice(index,1);const c=card(r,cardId);if(c.type==='field')r.field.push(cardId);else if(c.type==='trap')p.traps.push(cardId);else r.discard.push(cardId);}}
+function autoResolve(r){const w=r.pending;if(!w||w.stage!=='ready'||w.stack.length!==1||w.manualResponses||!VERIFIED_EFFECTS[w.cardId])return;const top=finishTop(w,r.players);const result=applyVerifiedCard(r,top,draw);consume(r,top.actorId,top.cardId);log(r,top.cardName+': '+result.message);r.pending=null;}
+
 const respond=(cb,error)=>cb?.(error?{ok:false,error}:{ok:true});
 function get(s,cb){const ref=sessions.get(s.id),r=ref&&rooms.get(ref.room),p=r?.players.find(x=>x.id===ref.player);if(!p){respond(cb,'먼저 방에 들어가 주세요');return null;}return {r,p};}
 function draw(r,p,n=1,where='top'){let x=0;while(x<n&&r.deck.length){p.hand.push(where==='bottom'?r.deck.shift():r.deck.pop());x++;}return x;}
@@ -23,14 +27,53 @@ s.on('join',({code,name,token}={},cb)=>{code=String(code||'').toUpperCase().trim
 action(s,'rounds',(r,p,{count})=>{if(p.id!==r.owner||r.status!=='lobby')return '방장만 게임 전에 설정할 수 있어요';count=Number(count);if(!Number.isInteger(count)||count<1||count>100)return '1~100바퀴만 가능해요';r.rounds=count;r.left=count;log(r,'전체 '+count+'바퀴 설정');});
 action(s,'start',(r,p)=>{if(p.id!==r.owner)return '방장만 시작할 수 있어요';if(r.status!=='lobby')return '진행 중입니다';if(r.players.length<2)return '2명 이상 필요해요';r.deck=shuffle(r.cards.map(x=>x.id));r.discard=[];r.field=[];r.players.forEach(x=>{x.hand=[];x.traps=[];draw(r,x,3)});r.left=r.rounds;r.turn=0;r.winner=null;r.pending=null;r.status='playing';log(r,'게임 시작: 플레이어마다 3장 배분');});
 action(s,'next',(r,p)=>{if(r.status!=='playing'||r.players[r.turn].id!==p.id)return '현재 플레이어만 턴을 종료해요';if(r.pending)return '카드 반응 처리 중에는 턴을 종료할 수 없어요';const v=advanceTurn({turn:r.turn,playerCount:r.players.length,roundsRemaining:r.left});r.turn=v.turn;r.left=v.roundsRemaining;if(v.roundFinished)log(r,'한 바퀴 완료! 남은 바퀴 '+r.left);if(!r.left){r.status='finished';log(r,'설정한 바퀴가 종료되었습니다');}else log(r,r.players[r.turn].name+'님 차례');});
-action(s,'draw',(r,p,{count=1,where='top'})=>{if(r.status!=='playing'||r.players[r.turn].id!==p.id)return '내 턴에만 뽑을 수 있어요';count=Number(count);if(!Number.isInteger(count)||count<1||count>10)return '1~10장만 가능해요';const n=draw(r,p,count,where==='bottom'?'bottom':'top');if(!n)return '뽑는 더미가 비었어요';log(r,p.name+'님이 '+n+'장 뽑았어요');});
-action(s,'move',(r,p,{cardId,destination,targetId})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';const index=p.hand.indexOf(cardId);if(index<0)return '내 손패에 없는 카드입니다';const c=card(r,cardId);if(c.type==='joker'&&!['player','deckTop','deckBottom'].includes(destination))return '조커를 이 위치로 이동할 수 없어요';const target=r.players.find(x=>x.id===targetId);if(destination==='player'&&!target)return '대상을 선택하세요';if(!['discard','trap','field','deckTop','deckBottom','player'].includes(destination))return '잘못된 위치';p.hand.splice(index,1);if(destination==='discard')r.discard.push(cardId);if(destination==='trap')p.traps.push(cardId);if(destination==='field')r.field.push(cardId);if(destination==='deckTop')r.deck.push(cardId);if(destination==='deckBottom')r.deck.unshift(cardId);if(destination==='player')target.hand.push(cardId);log(r,p.name+': '+c.name+' → '+(destination==='player'?target.name:destination));});
-action(s,'manual',(r,p,{type,targetId,count=1})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';const target=r.players.find(x=>x.id===targetId)||p;count=Number(count);if(!Number.isInteger(count)||count<1||count>10)return '1~10장만 가능해요';if(type==='draw'){const n=draw(r,target,count);if(!n)return '뽑는 더미가 비었어요';log(r,p.name+'님이 '+target.name+'에게 '+n+'장 지급');}else if(type==='randomDiscard'){const options=target.hand.filter(x=>card(r,x).type!=='joker');if(!options.length)return '버릴 수 있는 카드가 없어요';const c=options[randomInt(options.length)];target.hand.splice(target.hand.indexOf(c),1);r.discard.push(c);log(r,target.name+'님이 무작위로 한 장 버렸어요');}else if(type==='takeDiscard'){if(!r.discard.length)return '버린 카드 없음';target.hand.push(r.discard.pop());log(r,target.name+'님이 버린 더미에서 한 장 가져왔어요');}else return '알 수 없는 동작';});
+action(s,'draw',(r,p,{count=1,where='top'})=>{if(r.status!=='playing'||r.players[r.turn].id!==p.id)return '내 턴에만 뽑을 수 있어요';if(r.pending)return '반응 처리 중에는 일반 카드 뽑기를 할 수 없어요';count=Number(count);if(!Number.isInteger(count)||count<1||count>10)return '1~10장만 가능해요';const n=draw(r,p,count,where==='bottom'?'bottom':'top');if(!n)return '뽑는 더미가 비었어요';log(r,p.name+'님이 '+n+'장 뽑았어요');});
+action(s,'move',(r,p,{cardId,destination,targetId})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';if(r.pending&&!(r.pending.stage==='ready'&&r.pending.stack.at(-1).actorId===p.id))return '현재 효과 처리 순서가 아닙니다';const index=p.hand.indexOf(cardId);if(index<0)return '내 손패에 없는 카드입니다';const c=card(r,cardId);if(c.type==='joker'&&!['player','deckTop','deckBottom'].includes(destination))return '조커를 이 위치로 이동할 수 없어요';const target=r.players.find(x=>x.id===targetId);if(destination==='player'&&!target)return '대상을 선택하세요';if(!['discard','trap','field','deckTop','deckBottom','player'].includes(destination))return '잘못된 위치';p.hand.splice(index,1);if(destination==='discard')r.discard.push(cardId);if(destination==='trap')p.traps.push(cardId);if(destination==='field')r.field.push(cardId);if(destination==='deckTop')r.deck.push(cardId);if(destination==='deckBottom')r.deck.unshift(cardId);if(destination==='player')target.hand.push(cardId);log(r,p.name+': '+c.name+' → '+(destination==='player'?target.name:destination));});
+action(s,'manual',(r,p,{type,targetId,count=1})=>{if(r.status!=='playing')return '게임이 진행 중이 아닙니다';if(r.pending&&!(r.pending.stage==='ready'&&r.pending.stack.at(-1).actorId===p.id))return '현재 효과 처리 순서가 아닙니다';const target=r.players.find(x=>x.id===targetId)||p;count=Number(count);if(!Number.isInteger(count)||count<1||count>10)return '1~10장만 가능해요';if(type==='draw'){const n=draw(r,target,count);if(!n)return '뽑는 더미가 비었어요';log(r,p.name+'님이 '+target.name+'에게 '+n+'장 지급');}else if(type==='randomDiscard'){const options=target.hand.filter(x=>card(r,x).type!=='joker');if(!options.length)return '버릴 수 있는 카드가 없어요';const c=options[randomInt(options.length)];target.hand.splice(target.hand.indexOf(c),1);r.discard.push(c);log(r,target.name+'님이 무작위로 한 장 버렸어요');}else if(type==='takeDiscard'){if(!r.discard.length)return '버린 카드 없음';target.hand.push(r.discard.pop());log(r,target.name+'님이 버린 더미에서 한 장 가져왔어요');}else return '알 수 없는 동작';});
 action(s,'declare',(r,p)=>{if(r.status!=='playing'||p.hand.length<10)return '게임 중 손패 10장 이상이어야 해요';r.winner=p.id;r.status='finished';log(r,p.name+'님이 아야겠또! 승리를 선언했어요');});
 action(s,'editCard',(r,p,{cardId,type,description})=>{if(p.id!==r.owner)return '방장만 카드 정보를 바꿀 수 있어요';const c=card(r,cardId);if(!c)return '존재하지 않는 카드';if(!['action','field','trap','counter','joker'].includes(type))return '잘못된 유형';c.type=cardId==='120'?'joker':type;c.description=String(description||'').slice(0,1000);});
-action(s,'announce',(r,p,{cardId,targetId})=>{if(r.status!=='playing')return '게임이 진행 중이지 않아요';if(r.players[r.turn].id!==p.id)return '사용 선언은 현재 플레이어만 할 수 있어요';if(r.pending)return '기존 카드 반응부터 처리하세요';if(!p.hand.includes(cardId))return '내 손패에 없는 카드입니다';const chosen=card(r,cardId);r.pending={actorId:p.id,actorName:p.name,cardId,cardName:chosen.name,targetId:targetId||null,responses:[]};log(r,p.name+'님이 '+chosen.name+' 사용을 선언했어요. 대응을 확인하세요');});
-action(s,'react',(r,p,{choice})=>{if(!r.pending)return '반응할 카드가 없어요';if(r.pending.actorId===p.id)return '사용자는 반응할 수 없어요';if(!['pass','counter'].includes(choice))return '반응 종류 오류';r.pending.responses=r.pending.responses.filter(x=>x.playerId!==p.id);r.pending.responses.push({playerId:p.id,name:p.name,choice});log(r,p.name+'님: '+(choice==='counter'?'카운터/함정 반응 선언':'반응 없음'));});
-action(s,'resolve',(r,p)=>{if(!r.pending)return '대기 중인 선언이 없어요';if(p.id!==r.pending.actorId)return '선언한 플레이어만 완료할 수 있어요';log(r,r.pending.cardName+' 반응 확인 완료. 원본 효과는 수동 적용해 주세요');r.pending=null;});
+action(s,'announce',(r,p,{cardId,targetId})=>{
+  if(r.status!=='playing')return '게임이 진행 중이지 않아요';
+  if(r.players[r.turn].id!==p.id)return '사용 선언은 현재 플레이어만 할 수 있어요';
+  if(r.pending)return '기존 카드 반응부터 처리하세요';
+  if(!p.hand.includes(cardId))return '내 손패에 없는 카드입니다';
+  const chosen=card(r,cardId);
+  r.pending=createPriority(r.players,p,chosen,targetId||null);
+  log(r,p.name+'님이 '+chosen.name+' 사용 선언. 다음 반응: '+r.players.find(x=>x.id===currentResponder(r.pending))?.name);
+});
+action(s,'react',(r,p,{choice,cardId})=>{
+  const w=r.pending;
+  if(!w)return '반응할 카드가 없어요';
+  if(currentResponder(w)!==p.id)return '현재 '+(r.players.find(x=>x.id===currentResponder(w))?.name||'다른 플레이어')+'님의 반응 순서입니다';
+  if(choice==='pass'){passPriority(w,p);log(r,p.name+'님이 패스했습니다');}
+  else if(choice==='counter'){
+    if(!cardId)return '대응할 카드를 선택하세요';
+    const chosen=card(r,cardId);
+    if(!chosen)return '존재하지 않는 카드입니다';
+    const inHand=p.hand.includes(cardId),inTrap=p.traps.includes(cardId);
+    if(!inHand&&!inTrap)return '내가 가지고 있거나 설치한 카드가 아닙니다';
+    const source=inTrap?'trap':'hand';
+    playResponse(w,r.players,p,chosen,source);
+    const list=source==='trap'?p.traps:p.hand;
+    list.splice(list.indexOf(cardId),1);
+    r.discard.push(cardId);
+    log(r,p.name+'님이 '+chosen.name+' 대응 선언 (효과는 원본 규칙대로 수동 확인)');
+  }else return '잘못된 대응입니다';
+  autoResolve(r);
+});
+action(s,'resolve',(r,p)=>{
+  const w=r.pending;
+  if(!w)return '대기 중인 선언이 없어요';
+  if(w.stage!=='ready')return '모든 플레이어가 대응하거나 패스해야 합니다';
+  if(w.stack.at(-1).actorId!==p.id)return '현재 스택 맨 위 카드의 사용자만 처리할 수 있습니다';
+  const top=finishTop(w,r.players);
+  log(r,top.actorName+'님의 '+top.cardName+' 대응 처리 완료');
+  if(w.stage==='done'){
+    consume(r,top.actorId,top.cardId);
+    log(r,'원본 효과는 플레이어가 수동으로 확인한 뒤 처리했습니다');
+    r.pending=null;
+  } else log(r,'이전 카드로 돌아가며 대응 우선권을 다시 확인합니다');
+});
 action(s,'restart',(r,p)=>{if(p.id!==r.owner)return '방장만 초기화할 수 있어요';r.status='lobby';r.players.forEach(x=>{x.hand=[];x.traps=[]});r.deck=[];r.field=[];r.discard=[];r.left=r.rounds;r.turn=0;r.winner=null;r.pending=null;});
 s.on('disconnect',()=>{const ref=sessions.get(s.id);if(!ref)return;const r=rooms.get(ref.room),p=r?.players.find(x=>x.id===ref.player);if(p&&p.socket===s.id){p.connected=false;p.socket=null;send(r)}sessions.delete(s.id);});
 });
