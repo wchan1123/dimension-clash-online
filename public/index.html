@@ -32,7 +32,7 @@ header{padding:12px 0 20px}
 #stageBanner{margin:0 0 16px;border:2px solid var(--sky);border-radius:16px;background:linear-gradient(95deg,#213b42,#30204d);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 #stageBanner strong{font-size:17px}
 #stageBanner small{color:#ced2e0}
-#reactionPanel{background:#342144;border:1px solid #b994de;border-radius:16px;padding:14px;margin:0 0 15px}
+#reactionPanel{grid-column:1/-1;background:#342144;border:1px solid #b994de;border-radius:16px;padding:14px;margin:0 0 15px}
 #reactionPanel button{margin-right:7px;margin-top:9px}
 #previewOverlay{position:fixed;inset:0;z-index:9999;background:#090413df;backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;padding:15px}
 #previewOverlay.open{display:flex}
@@ -69,7 +69,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid #7cf7c3}
 (function(){
 const X=document.getElementById.bind(document);
 const sheet=(id)=>'/sheets/'+String(Math.ceil(Number(id)/9)).padStart(2,'0')+'.png';
-function artStyle(id){const n=Number(id)-1,c=n%3,row=Math.floor(n%9/3);return 'background-image:url("'+sheet(id)+'");background-position:'+([5.78,50,94.2][c])+'% '+([6.94,50,93.08][row])+'%;';}
+function artStyle(id){const n=Number(id)-1,c=n%3,row=Math.floor((n%9)/3);return 'background-image:url("'+sheet(id)+'");background-position:'+([5.78,50,94.2][c])+'% '+([6.94,50,93.08][row])+'%;';}
 function artNode(id,large){const div=document.createElement('div');div.className='card-art'+(large?' large-art':'');div.style.cssText=artStyle(id);div.title='원본 카드 #'+id;return div;}
 const anchor=document.createElement('div');anchor.id='stageBanner';anchor.classList.add('hidden');X('app').insertBefore(anchor,X('game'));
 const reactions=document.createElement('div');reactions.id='reactionPanel';reactions.classList.add('hidden');X('game').prepend(reactions);
