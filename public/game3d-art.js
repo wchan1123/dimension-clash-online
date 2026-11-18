@@ -97,7 +97,7 @@ export function makeHuman(scene,p){
  for(const [limb,x] of [[leftArm,-.40],[rightArm,.40]]){limb.position.set(x,1.49,0);hips.add(limb);piece(limb,new THREE.CapsuleGeometry(.105,.38,4,10),shirt,[0,-.31,0]);sphere(limb,.11,0xffd2b5,[0,-.64,0]);}
  for(const [limb,x] of [[leftLeg,-.18],[rightLeg,.18]]){limb.position.set(x,.85,0);hips.add(limb);piece(limb,new THREE.CapsuleGeometry(.13,.48,3,10),pants,[0,-.4,0]);}
  const name=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTexture(p.name),transparent:true,depthTest:false}));name.scale.set(1.8,.45,1);name.position.y=2.65;g.add(name);
- const animator={g,hips,leftArm,rightArm,leftLeg,rightLeg,p,id:p.id,walk:0,sit:!!p.seated};
+ const animator={g,hips,leftArm,rightArm,leftLeg,rightLeg,p,id:p.id,walk:0,sit:!!p.seated,pointUntil:0,targetPos:null};
  return animator;
 }
 export function animateHuman(h,time,walking=false,seated=false){
@@ -113,6 +113,7 @@ export function animateHuman(h,time,walking=false,seated=false){
   h.leftArm.rotation.x=-.12+Math.sin(time*1.4)*.04;h.rightArm.rotation.x=-.12-Math.sin(time*1.4)*.04;
   h.leftLeg.rotation.x=0;h.rightLeg.rotation.x=0;
  }
+ if(h.pointUntil>Date.now()){const t=h.targetPos;if(t){const direction=Math.atan2(t.x-h.g.position.x,t.z-h.g.position.z);h.g.rotation.y=direction;}h.rightArm.rotation.x=-1.45;h.rightArm.rotation.z=-.18;h.leftArm.rotation.x=-.55;}
  h.hips.rotation.z=Math.sin(time*.95)*.009;
 }
 export function createOverlayGraphics(){
