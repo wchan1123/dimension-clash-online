@@ -85,7 +85,7 @@ export function refreshBoard(board,state,back){
  const count=Math.min(13,Math.max(0,state.deck||0));for(let i=0;i<count;i++)placeCard(board.deckAnchor,null,back,i);
  if(state.discard?.length)placeCard(board.graveAnchor,state.discard[0].id,back,0);
  if(state.field?.length)placeCard(board.fieldAnchor,state.field[0].id,back,0);
- for(let i=0;i<(state.players||[]).length;i++){const p=state.players[i],anchor=board.trapAnchors[i];if(!anchor)continue;for(let j=0;j<Math.min(5,p.traps);j++){const face=(state.trapReveal?.ownerId===p.id&&p.id===state.trapReveal.ownerId&&state.trapReveal.cardId===p.revealedTraps?.[j]?.id)?state.trapReveal.cardId:(p.revealedTraps?.[j]?.id||null);const actual=(state.trapReveal?.ownerId===p.id&&p.id===state.trapReveal.ownerId&&p.traps===1)?state.trapReveal.cardId:face;const obj=placeCard(anchor,actual,back,j);obj.position.x=(j-Math.min(4,p.traps-1)/2)*.17;}}
+ for(let i=0;i<(state.players||[]).length;i++){const p=state.players[i],anchor=board.trapAnchors[i];if(!anchor)continue;for(let j=0;j<Math.min(5,p.traps);j++){const face=(state.trapReveal?.ownerId===p.id&&state.trapReveal.index===j)?state.trapReveal.cardId:(p.revealedTraps?.[j]?.id||null);const obj=placeCard(anchor,face,back,j);obj.position.x=(j-Math.min(4,p.traps-1)/2)*.17;}}
 }
 export function makeHuman(scene,p){
  const g=new THREE.Group();scene.add(g);const primary=palette[Math.abs(p.name.length*3)%palette.length];
