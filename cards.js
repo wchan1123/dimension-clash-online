@@ -118,4 +118,4 @@ Young Man
 역무(逆撫)
 백안
 조커`.split('\n');
-export const CARDS=NAMES.map((name,i)=>({id:String(i+1).padStart(3,'0'),name,type:i===119?'joker':(['118','119'].includes(String(i+1).padStart(3,'0'))?'field':(i===69?'counter':'action')),description:''}));
+export const CARDS=NAMES.map((name,i)=>({id:String(i+1).padStart(3,'0'),name,type:i===119?'joker':(i>=113?'field':(i>=80?'trap':(i>=59?'counter':'action'))),description:''}));
