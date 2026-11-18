@@ -30,8 +30,8 @@ test('counter chain is last-in-first-out, reopening clockwise priority',()=>{
  passPriority(w,players[0]);passPriority(w,players[1]);
  assert.equal(w.stage,'ready');
  assert.equal(finishTop(w,players).cardId,'089');
- assert.equal(currentResponder(w),'A');
- passPriority(w,players[0]);passPriority(w,players[1]);
+ assert.equal(currentResponder(w),'C');
+ passPriority(w,players[2]);passPriority(w,players[0]);
  assert.equal(finishTop(w,players).cardId,'080');
  assert.equal(currentResponder(w),'B');
  passPriority(w,players[1]);passPriority(w,players[2]);
